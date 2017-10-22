@@ -5,8 +5,6 @@ const bcrypt = require('bcrypt')
 const dataTables = require('mongoose-datatables')
 const assert = require('http-assert')
 
-const jwt = require('lib/jwt')
-
 const SALT_WORK_FACTOR = parseInt(process.env.SALT_WORK_FACTOR)
 
 const userSchema = new Schema({
@@ -66,13 +64,6 @@ userSchema.methods.format = function () {
   }
 }
 
-userSchema.methods.getJwt = function () {
-  return jwt.sign({
-    uuid: this.uuid,
-    apiToken: this.apiToken
-  })
-}
-
 userSchema.methods.toPublic = function () {
   return {
     uuid: this.uuid,
@@ -97,6 +88,27 @@ userSchema.methods.toAdmin = function () {
     organizations: this.organizations,
     groups: this.groups
   }
+}
+
+userSchema.methods.validatePassword = async function (password) {
+  const isValid = await new Promise((resolve, reject) => {
+    bcrypt.compare(password, this.password, (err, compared) =>
+      (err ? reject(err) : resolve(compared))
+    )
+  })
+
+  return isValid
+}
+
+userSchema.methods.createToken = async function (options = {}) {
+  const UserToken = mongoose.model('UserToken')
+
+  const token = await UserToken.create({
+    user: this._id,
+    type: options.type || ''
+  })
+
+  return token
 }
 
 // Statics
@@ -129,20 +141,6 @@ userSchema.statics.register = async function (options) {
   const createdUser = await this.create({ screenName: screenName, displayName: displayName, email: email, password: password })
 
   return createdUser
-}
-
-userSchema.methods.validatePassword = async function (password) {
-  const isValid = await new Promise((resolve, reject) => {
-    bcrypt.compare(password, this.password, (err, compared) =>
-      (err ? reject(err) : resolve(compared))
-    )
-  })
-
-  return isValid
-}
-
-userSchema.methods.setPassword = async function (password) {
-
 }
 
 userSchema.plugin(dataTables)
